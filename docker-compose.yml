@@ -1,0 +1,83 @@
+services:
+  edge:
+    build:
+      context: .
+      dockerfile: docker/openresty/Dockerfile
+    depends_on:
+      - php
+      - valkey
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # فقط public برای nginx کافی است (هم سریع‌تر هم تمیزتر)
+      - ./public:/var/www/html/public:ro
+
+  php:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+    depends_on:
+      - postgres
+      - valkey
+    environment:
+      APP_ENV: local
+      APP_DEBUG: "true"
+      RUN_MIGRATIONS: "1"
+      RUN_FIRST_BOOTSTRAP: "1"
+    volumes:
+      - ./:/var/www/html
+      - vendor:/var/www/html/vendor
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+    depends_on:
+      - postgres
+      - valkey
+      - php
+    working_dir: /var/www/html
+    command: sh -lc "php artisan schedule:clear-cache || true; php artisan schedule:work"
+    environment:
+      APP_ENV: local
+      APP_DEBUG: "true"
+      RUN_MIGRATIONS: "0"
+      RUN_FIRST_BOOTSTRAP: "0"
+    volumes:
+      - ./:/var/www/html
+      - vendor:/var/www/html/vendor
+
+  node:
+    image: node:20-alpine
+    working_dir: /var/www/html
+    volumes:
+      - ./:/var/www/html
+      - node_modules:/var/www/html/node_modules
+    ports:
+      - "5173:5173"
+    command: sh -lc "if [ ! -d node_modules ] || [ -z \"$(ls -A node_modules 2>/dev/null)\" ]; then npm install; fi; tail -f /dev/null"
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: shortener
+      POSTGRES_USER: shortener
+      POSTGRES_PASSWORD: shortener
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  valkey:
+    image: valkey/valkey:latest
+    restart: unless-stopped
+    volumes:
+      - valkey_data:/data
+
+volumes:
+  postgres_data:
+  valkey_data:
+  vendor:
+  node_modules:
