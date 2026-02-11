@@ -11,6 +11,27 @@ if [ ! -f .env ] && [ -f .env.example ]; then
   cp .env.example .env
 fi
 
+run_as_web_user() {
+  su-exec www-data:www-data "$@"
+}
+
+ensure_runtime_permissions() {
+  mkdir -p \
+    storage/framework/cache \
+    storage/framework/sessions \
+    storage/framework/views \
+    storage/logs \
+    bootstrap/cache
+
+  # On Linux hosts this guarantees proper ownership.
+  chown -R www-data:www-data storage bootstrap/cache 2>/dev/null || true
+
+  # On bind mounts (especially Windows/macOS) chown may fail,
+  # so ensure write permission for Laravel runtime paths.
+  chmod -R ug+rwX storage bootstrap/cache 2>/dev/null || true
+  chmod -R a+rwX storage bootstrap/cache 2>/dev/null || true
+}
+
 DB_HOST="${DB_HOST:-postgres}"
 DB_PORT="${DB_PORT:-5432}"
 
@@ -25,29 +46,31 @@ if [ ! -f vendor/autoload.php ]; then
   composer install --no-interaction --prefer-dist --optimize-autoloader
 fi
 
+ensure_runtime_permissions
+
 if [ -f .env ] && ! grep -q '^APP_KEY=base64:' .env; then
   echo "Generating APP_KEY..."
-  php artisan key:generate --force
+  run_as_web_user php artisan key:generate --force
 fi
 
 if [ ! -e public/storage ]; then
-  php artisan storage:link >/dev/null 2>&1 || true
+  run_as_web_user php artisan storage:link >/dev/null 2>&1 || true
 fi
 
 if [ "${RUN_MIGRATIONS:-0}" = "1" ]; then
   echo "Running migrations..."
-  php artisan migrate --force
+  run_as_web_user php artisan migrate --force
 fi
 
 if [ "${RUN_FIRST_BOOTSTRAP:-0}" = "1" ]; then
   BOOTSTRAP_MARKER="storage/framework/.first_bootstrap_done"
   if [ ! -f "${BOOTSTRAP_MARKER}" ]; then
     echo "Running first bootstrap tasks..."
-    php artisan optimize:clear || true
-    php artisan filament:assets || true
-    php artisan optimize || true
+    run_as_web_user php artisan optimize:clear || true
+    run_as_web_user php artisan filament:assets || true
+    run_as_web_user php artisan optimize || true
     mkdir -p "$(dirname "${BOOTSTRAP_MARKER}")"
-    touch "${BOOTSTRAP_MARKER}"
+    run_as_web_user touch "${BOOTSTRAP_MARKER}"
   fi
 fi
 

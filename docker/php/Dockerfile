@@ -8,6 +8,7 @@ RUN apk add --no-cache \
     icu-dev libzip-dev \
     linux-headers \
     netcat-openbsd \
+    su-exec \
     $PHPIZE_DEPS \
     && docker-php-ext-install -j"$(nproc)" pdo_pgsql pgsql pcntl opcache intl zip \
     && pecl install redis \

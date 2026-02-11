@@ -296,6 +296,28 @@ docker compose exec php php artisan schedule:clear-cache
 docker compose restart scheduler
 ```
 
+### Problem: Postgres auth fails after changing `.env`
+
+Symptoms:
+- `SQLSTATE[08006] [7] ... FATAL: password authentication failed for user ...`
+- `php` container loops because startup migrations fail.
+
+Cause:
+- PostgreSQL init credentials apply only on first initialization of an empty data volume.
+- Changing `.env` later does not automatically update roles in existing `PGDATA`.
+
+Safe repair (without deleting DB data):
+
+```bash
+chmod +x scripts/fix-postgres-auth.sh
+./scripts/fix-postgres-auth.sh
+```
+
+This script:
+- reads `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD` from `.env`
+- repairs/creates role + database grants via PostgreSQL single-user mode
+- restarts services and reruns migrations
+
 ---
 
 ## 8) Useful One-Liners

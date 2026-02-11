@@ -4,13 +4,21 @@ services:
       context: .
       dockerfile: docker/openresty/Dockerfile
     depends_on:
-      - php
-      - valkey
+      php:
+        condition: service_healthy
+      valkey:
+        condition: service_started
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 80 || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 10s
     ports:
       - "80:80"
       - "443:443"
     volumes:
-      # فقط public برای nginx کافی است (هم سریع‌تر هم تمیزتر)
       - ./public:/var/www/html/public:ro
 
   php:
@@ -20,6 +28,13 @@ services:
     depends_on:
       - postgres
       - valkey
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 9000 || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 30s
     environment:
       APP_ENV: local
       APP_DEBUG: "true"
@@ -28,17 +43,23 @@ services:
     volumes:
       - ./:/var/www/html
       - vendor:/var/www/html/vendor
+      - storage_data:/var/www/html/storage
+      - bootstrap_cache:/var/www/html/bootstrap/cache
 
   scheduler:
     build:
       context: .
       dockerfile: docker/php/Dockerfile
     depends_on:
-      - postgres
-      - valkey
-      - php
+      postgres:
+        condition: service_started
+      valkey:
+        condition: service_started
+      php:
+        condition: service_healthy
     working_dir: /var/www/html
-    command: sh -lc "php artisan schedule:clear-cache || true; php artisan schedule:work"
+    command: sh -lc "su-exec www-data:www-data php artisan schedule:clear-cache || true; su-exec www-data:www-data php artisan schedule:work"
+    restart: unless-stopped
     environment:
       APP_ENV: local
       APP_DEBUG: "true"
@@ -47,6 +68,8 @@ services:
     volumes:
       - ./:/var/www/html
       - vendor:/var/www/html/vendor
+      - storage_data:/var/www/html/storage
+      - bootstrap_cache:/var/www/html/bootstrap/cache
 
   node:
     image: node:20-alpine
@@ -62,9 +85,9 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: shortener
-      POSTGRES_USER: shortener
-      POSTGRES_PASSWORD: shortener
+      POSTGRES_DB: ${DB_DATABASE:-shortener}
+      POSTGRES_USER: ${DB_USERNAME:-shortener}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-shortener}
     ports:
       - "5432:5432"
     volumes:
@@ -81,3 +104,5 @@ volumes:
   valkey_data:
   vendor:
   node_modules:
+  storage_data:
+  bootstrap_cache:
