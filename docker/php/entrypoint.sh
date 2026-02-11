@@ -3,17 +3,14 @@ set -e
 
 cd /var/www/html
 
-# اگر پروژه mount نشده/فایل artisan نیست، فقط سرویس را بالا بیاور
 if [ ! -f artisan ]; then
   exec "$@"
 fi
 
-# اگر .env نداری، از نمونه بساز
 if [ ! -f .env ] && [ -f .env.example ]; then
   cp .env.example .env
 fi
 
-# صبر برای DB (اگر .env درست ست شده باشد)
 DB_HOST="${DB_HOST:-postgres}"
 DB_PORT="${DB_PORT:-5432}"
 
